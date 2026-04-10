@@ -1,0 +1,225 @@
+defaults:
+  - _self_
+  - task: custom_pick_and_place
+
+name: train_diffusion_unet_image
+_target_: diffusion_policy.workspace.train_diffusion_unet_image_workspace.TrainDiffusionUnetImageWorkspace
+
+task_name: ${task.name}
+shape_meta: ${task.shape_meta}
+exp_name: "default"
+
+horizon: 16
+n_obs_steps: 2
+n_action_steps: 8
+n_latency_steps: 0
+dataset_obs_steps: ${n_obs_steps}
+past_action_visible: False
+keypoint_visible_rate: 1.0
+obs_as_global_cond: True
+
+load_model_ckp: False
+# ckp_path: /mnt/ssd1/szhao/LeveFD/ckp/2026.01.27/17.03.34_train_diffusion_unet_image_custom_pick_and_place/checkpoints/latest.ckpt
+# ckp_path: /mnt/ssd1/szhao/LeveFD/ckp/2026.01.29/14.27.26_train_diffusion_unet_image_custom_pick_and_place/checkpoints/latest.ckpt
+# ckp_path: /mnt/ssd1/szhao/LeveFD/ckp/2026.02.15/23.09.23_train_diffusion_unet_image_custom_pick_and_place/checkpoints/latest.ckpt
+ckp_path: /mnt/ssd1/szhao/LeveFD/ckp/2026.04.08/19.55.51_train_diffusion_unet_image_custom_pick_and_place/checkpoints/latest.ckpt
+# ckp_path: /mnt/ssd1/szhao/LeveFD/ckp/2025.12.25/17.14.18_train_diffusion_unet_image_custom_pick_and_place/checkpoints/latest.ckpt
+# ckp_path: /mnt/ssd1/szhao/LeveFD/ckp/2026.02.06/16.05.02_train_diffusion_unet_image_custom_pick_and_place/checkpoints/latest.ckpt
+# ckp_path: /mnt/ssd1/szhao/LeveFD/ckp/2026.02.06/11.29.40_train_diffusion_unet_image_custom_pick_and_place/checkpoints/latest.ckpt
+# classifier_ckp_path: /mnt/ssd1/szhao/LeveFD/ckp/2026.01.26/13.21.04_train_diffusion_unet_image_custom_pick_and_place/checkpoints/latest.ckpt
+# classifier_ckp_path: /mnt/ssd1/szhao/LeveFD/ckp/2026.02.06/16.05.02_train_diffusion_unet_image_custom_pick_and_place/checkpoints/latest.ckpt
+# classifier_ckp_path: /mnt/ssd1/szhao/LeveFD/ckp/2026.02.18/17.46.01_train_diffusion_unet_image_custom_pick_and_place/checkpoints/latest.ckpt
+# classifier_ckp_path: /mnt/ssd1/szhao/LeveFD/ckp/2026.02.06/11.29.40_train_diffusion_unet_image_custom_pick_and_place/checkpoints/latest.ckpt
+# classifier_ckp_path: /mnt/ssd1/szhao/LeveFD/ckp/2026.01.29/17.01.27_train_diffusion_unet_image_custom_pick_and_place/checkpoints/latest.ckpt
+classifier_ckp_path: /mnt/ssd1/szhao/LeveFD/ckp/2026.02.06/11.29.40_train_diffusion_unet_image_custom_pick_and_place/checkpoints/latest.ckpt
+
+policy:
+  _target_: diffusion_policy.policy.diffusion_unet_image_policy.DiffusionUnetImagePolicy
+  # _target_: diffusion_policy.policy.diffusion_unet_image_adaptive_lamda_policy.DiffusionUnetImageAdpLamdaPolicy
+  # _target_: diffusion_policy.policy.pretrain_classifier_policy.PretrainClassfierPolicy
+
+  shape_meta: ${shape_meta}
+  use_classifier: False
+  smooth_label: False
+  noise_scheduler:
+    _target_: diffusers.schedulers.scheduling_ddpm.DDPMScheduler
+    num_train_timesteps: 100
+    beta_start: 0.0001
+    beta_end: 0.02
+    beta_schedule: squaredcos_cap_v2
+    variance_type: fixed_small # Yilun's paper uses fixed_small_log instead, but easy to cause Nan
+    clip_sample: True # required when predict_epsilon=False
+    prediction_type: epsilon # or sample
+
+  obs_encoder:
+    _target_: diffusion_policy.model.vision.multi_image_obs_encoder.MultiImageObsEncoder
+    shape_meta: ${shape_meta}
+    rgb_model:
+      _target_: diffusion_policy.model.vision.model_getter.get_vision
+      name: resnet18
+      weights: r3m
+      # weights: null
+      # name: dinov3
+      # weights: dinov3_vitb16
+    resize_shape: null
+    crop_shape: [220,380] # [230, 230] # [220,380]
+    # constant center crop
+    random_crop: True
+    use_group_norm: True
+    share_rgb_model: False
+    imagenet_norm: True
+  # scorer_network:
+  #   device: ${training.device}
+  #   score_step: 4 # make sure no overlap between action and obs
+  #   transformer:
+  #     is_cross: False
+  #     time_step: ${horizon}
+  #     embedding_dim: 2048
+  #     use_encoder_for_action: True
+  #     encoder_mlp: [8, 64, 512]
+  #     pos_embedding_dim: 2048
+  #     n_head: 16
+  #     depth: 2
+  #     ffd: 4096
+  #     use_pe: True
+  #   action_mlp:
+  #     units: [2048, 512, 128, 32]
+  #     activation_function: elu
+  #     norm_func_name: layer_norm
+  #     lastnorm_func_name: sigmoid
+  scorer_network:
+    device: ${training.device}
+    action_mlp:
+      units: [8, 16, 32]
+      activation_function: elu
+      norm_func_name: layer_norm
+    label_mlp:
+      units: [2048, 512, 128, 32]
+      # units: [3584, 1024, 128, 32]
+      activation_function: elu
+      norm_func_name: layer_norm
+      # lastnorm_func_name: tanh
+      lastnorm_func_name: sigmoid
+  
+  horizon: ${horizon}
+  n_action_steps: ${eval:'${n_action_steps}+${n_latency_steps}'}
+  n_obs_steps: ${n_obs_steps}
+  num_inference_steps: 100
+  obs_as_global_cond: ${obs_as_global_cond}
+  # crop_shape: null
+  diffusion_step_embed_dim: 128
+  down_dims: [512, 1024, 2048]
+  kernel_size: 5
+  n_groups: 8
+  cond_predict_scale: True
+  infer_loss_type: ${training.loss_type}
+  # temperature_threshold: 0.1 #0.08
+  # loss_threshold: 0.1
+  # softplus_margin: 0.0
+  # add_random_gripper: True
+  # additional_data_num: 16
+
+  # scheduler.step params
+  # predict_epsilon: True
+
+ema:
+  _target_: diffusion_policy.model.diffusion.ema_model.EMAModel
+  update_after_step: 0
+  inv_gamma: 1.0
+  power: 0.75
+  min_value: 0.0
+  max_value: 0.9999
+
+dataloader:
+  batch_size: 64
+  num_workers: 4
+  shuffle: True
+  pin_memory: True
+  persistent_workers: False
+
+val_dataloader:
+  batch_size: 64
+  num_workers: 4
+  shuffle: False
+  pin_memory: True
+  persistent_workers: False
+
+optimizer:
+  _target_: torch.optim.AdamW
+  lr: 1.0e-4
+  betas: [0.95, 0.999]
+  eps: 1.0e-8
+  weight_decay: 1.0e-6
+
+training:
+  device: "cuda:0"
+  seed: 42
+  debug: False
+  resume: True
+  # optimization
+  lr_scheduler: cosine
+  lr_warmup_steps: 500
+  num_epochs: 100 # 8000
+  gradient_accumulate_every: 1
+  # EMA destroys performance when used with BatchNorm
+  # replace BatchNorm with GroupNorm.
+  use_ema: True
+  freeze_encoder: False
+  # training loop control
+  # in epochs
+  rollout_every: 100
+  checkpoint_every: 10 #10 # 50
+  val_every: 1
+  sample_every: 5
+  # steps per epoch
+  max_train_steps: null
+  max_val_steps: null
+  # misc
+  tqdm_interval_sec: 1.0
+  loss_type: 'flow_matching' #'classifier', 'contrastive' 'flow_matching' 'diffusion'
+  success_per: 0.5
+
+logging:
+  project: diffusion_policy_debug
+  resume: True
+  mode: online
+  name: ${now:%Y.%m.%d-%H.%M.%S}_${name}_${task_name}
+  tags: ["${name}", "${task_name}", "${exp_name}"]
+  id: null
+  group: null
+
+checkpoint:
+  topk:
+    monitor_key: train_loss
+    mode: max
+    k: 5
+    format_str: 'epoch={epoch:04d}-train_loss={train_loss:.3f}.ckpt'
+  save_last_ckpt: True
+  save_last_snapshot: False
+
+multi_run:
+  run_dir: /mnt/ssd1/szhao/LeveFD/ckp/${now:%Y.%m.%d}/${now:%H.%M.%S}_${name}_${task_name}
+  # run_dir: /media/msc-auto/HDD/szhao/LeveFD/ckp/${now:%Y.%m.%d}/${now:%H.%M.%S}_${name}_${task_name}
+  wandb_name_base: ${now:%Y.%m.%d-%H.%M.%S}_${name}_${task_name}
+
+hydra:
+  job:
+    override_dirname: ${name}
+  run:
+    dir: /mnt/ssd1/szhao/LeveFD/ckp/${now:%Y.%m.%d}/${now:%H.%M.%S}_${name}_${task_name}
+  sweep:
+    dir: /mnt/ssd1/szhao/LeveFD/ckp/${now:%Y.%m.%d}/${now:%H.%M.%S}_${name}_${task_name}
+    subdir: ${hydra.job.num}
+
+#   multi_run:
+#   run_dir: /mnt/ssd1/szhao/LeveFD/ckp/${now:%Y.%m.%d}/${now:%H.%M.%S}_${name}_${task_name}
+#   wandb_name_base: ${now:%Y.%m.%d-%H.%M.%S}_${name}_${task_name}
+
+# hydra:
+#   job:
+#     override_dirname: ${name}
+#   run:
+#     dir: /home/shuqi/LeveFD/ckp/${now:%Y.%m.%d}/${now:%H.%M.%S}_${name}_${task_name}
+#   sweep:
+#     dir: /home/shuqi/LeveFD/ckp/${now:%Y.%m.%d}/${now:%H.%M.%S}_${name}_${task_name}
+#     subdir: ${hydra.job.num}
