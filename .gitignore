@@ -1,0 +1,15 @@
+# Byte-compiled / cache
+__pycache__/
+*.py[cod]
+
+# Distribution / packaging
+*.egg-info/
+build/
+dist/
+
+# macOS Finder files
+.DS_Store
+
+# Data
+**/collected_data/
+**/view_dataset/
