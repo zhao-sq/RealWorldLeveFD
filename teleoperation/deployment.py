@@ -26,13 +26,15 @@ from crx_utils import *
 from diffusion_policy.workspace.base_workspace import BaseWorkspace
 from diffusion_policy.dataset.base_dataset import BaseImageDataset
 from diffusion_policy.policy.base_image_policy import BaseImagePolicy
+from IPython import embed
 
 # =========================
 # Config
 # =========================
 GRIPPER_SERIAL = "/dev/ttyACM1"
 
-INIT_JOINT = np.array([0,0,0,0,-90,-30])
+# INIT_JOINT = np.array([0,0,0,0,-90,-30])
+INIT_JOINT = np.array([0,0,-15,0,-75,-30])
 RESET_SPEED = 50
 SPEED = 15 # 30
 DT = 1 / 10
@@ -491,6 +493,7 @@ if __name__ == "__main__":
 
     keys = KeyWatcher()
     env = RealEnv(controller, gripper)
+    embed()
 
     print("Loading policy…")
     with initialize(config_path="diffusion_policy/config", version_base=None):
@@ -521,11 +524,13 @@ if __name__ == "__main__":
         workspace.ema_model.set_normalizer(normalizer)
         policy = workspace.ema_model
 
-    policy.eval()    
+    policy.eval()   
+    embed() 
 
     print("Warming up get_obs forward…")
     for _ in range(10):
-        _ = env.get_obs(time_step=0, to_device=True)
+        dict_info,_ = env.get_obs(time_step=0, to_device=True)
+    embed()
 
     print("Deploying policy.")
     run_policy_loop(env, controller, cfg, policy, keys, num_steps=NUM_STEPS, dt=DT, num_episode=1, n_obs_steps=n_obs_steps, n_action_steps=n_action_steps)

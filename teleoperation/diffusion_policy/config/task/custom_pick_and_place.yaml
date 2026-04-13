@@ -1,0 +1,83 @@
+name: custom_pick_and_place
+
+# image_shape: &image_shape [3, 256, 256]
+image_shape: &image_shape [3, 240, 424]
+shape_meta: &shape_meta
+  # acceptable types: rgb, low_dim
+  obs:
+    # simulation images
+    # overhead_rgb:
+    #   shape: *image_shape
+    #   type: rgb
+    # wrist_rgb:
+    #   shape: *image_shape
+    #   type: rgb
+    # left_shoulder_rgb:
+    #   shape: *image_shape
+    #   type: rgb
+    # front_rgb:
+    #   shape: *image_shape
+    #   type: rgb
+    # low_dim_obs:
+    #   shape: [8]
+    #   type: low_dim
+    # realworld images
+    in_hand:
+      shape: *image_shape
+      type: rgb
+    fixed_left:
+      shape: *image_shape
+      type: rgb
+  action:
+    shape: [8]
+
+# TODO: build a real-time runner
+env_runner:
+  _target_: diffusion_policy.env_runner.pusht_image_runner.PushTImageRunner
+  n_train: 6
+  n_train_vis: 2
+  train_start_seed: 0
+  n_test: 50
+  n_test_vis: 4
+  legacy_test: True
+  test_start_seed: 100000
+  max_steps: 300
+  n_obs_steps: ${n_obs_steps}
+  n_action_steps: ${n_action_steps}all
+  fps: 10
+  past_action: ${past_action_visible}
+  n_envs: null
+
+dataset:
+  _target_: diffusion_policy.dataset.custom_image_dataset.CustomImageDataset
+  # simulation dataset
+  # _target_: diffusion_policy.dataset.pusht_image_dataset.PushTImageDataset
+  # zarr_path: /media/msc-auto/HDD/szhao/LeveFD/pkl_data/pick_and_place_same_color_jump5128.pkl
+  # zarr_path: /media/msc-auto/HDD/szhao/LeveFD/pkl_data/pick_and_place_same_color_all.pkl
+  # zarr_path: /media/msc-auto/HDD/szhao/LeveFD/pkl_data/pick_and_place_same_color.pkl
+  # zarr_path: /home/msc-auto/szhao/LeveFD/pick_and_place_same_color.pkl
+  # zarr_path: /mnt/ssd1/szhao/LeveFD/rlbench_dataset/put_groceries_in_cupboard_pkl/put_groceries_in_cupboard_all_test.pkl 
+  # zarr_path: /mnt/ssd1/szhao/LeveFD/rlbench_dataset/put_groceries_in_cupboard_pkl/put_groceries_in_cupboard_front.pkl
+  # zarr_path: /mnt/ssd1/szhao/LeveFD/rlbench_dataset/put_groceries_in_cupboard_pkl/put_groceries_in_cupboard_all.pkl 
+  # zarr_path: /mnt/ssd1/szhao/LeveFD/rlbench_dataset/put_item_in_drawer_pkl/put_item_in_drawer_all.pkl 
+  # zarr_path: /mnt/ssd1/szhao/LeveFD/rlbench_dataset/put_item_in_drawer_pkl/put_item_in_drawer_overhead.pkl  
+  # zarr_path: /mnt/ssd1/szhao/LeveFD/rlbench_dataset/put_item_in_drawer_pkl/put_item_in_drawer_all_overhead.pkl  
+  # zarr_path: /mnt/ssd1/szhao/LeveFD/rlbench_dataset/put_item_in_drawer_pkl/put_item_in_drawer_front.pkl 
+  # zarr_path: /mnt/ssd1/szhao/LeveFD/rlbench_dataset/pick_and_lift_pkl/pick_and_place_same_color_all.pkl 
+  # zarr_path: /mnt/ssd1/szhao/LeveFD/rlbench_dataset/pick_and_lift_pkl/pick_and_place_same_color_failure.pkl 
+  # zarr_path: /mnt/ssd1/szhao/LeveFD/rlbench_dataset/pick_and_lift_pkl/pick_and_place_same_color_cf.pkl   
+  # zarr_path: /mnt/ssd1/szhao/LeveFD/rlbench_dataset/pick_and_lift_pkl/pick_and_place_same_color.pkl  
+  # zarr_path: /mnt/ssd1/szhao/LeveFD/rlbench_dataset/pick_and_lift_pkl/pick_and_place_all.pkl  
+  # real world dataset
+  zarr_path: /home/msc/Documents/RealWorldLeveFD/dataset/mug_tree_hanging.pkl  
+  horizon: ${horizon}
+  pad_before: ${eval:'${n_obs_steps}-1'}
+  pad_after: ${eval:'${n_action_steps}-1'}
+  seed: 0
+  val_ratio: 0.02
+  max_train_episodes: 300
+  loss_type: ${training.loss_type}
+  action_type: 'joint_pos'
+  delta_action: True
+  smooth_label: ${policy.smooth_label}
+  from_real: True
