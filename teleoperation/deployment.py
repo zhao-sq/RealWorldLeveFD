@@ -23,6 +23,7 @@ from cv_utils import findDevices, initialize_camera, get_rgbd_image_res
 from pynput import keyboard as pynput_keyboard
 from crx_utils import *
 
+from diffusion_policy.model.common.normalizer import LinearNormalizer
 from diffusion_policy.workspace.base_workspace import BaseWorkspace
 from diffusion_policy.dataset.base_dataset import BaseImageDataset
 from diffusion_policy.policy.base_image_policy import BaseImagePolicy
@@ -328,10 +329,11 @@ def set_gripper_absolute_degree(gripper: New_Gripper, target_deg: float):
 def get_current_obs(obs_list: dict, n_obs_steps, image_key):
     recent = [-i for i in range(1, n_obs_steps + 1)]
     recent.reverse()
+    print('inside_current_obs')
     obs_dict = {
         k: torch.stack(
             [
-                getattr(obs_list[o], k).permute(2, 0, 1) 
+                obs_list[o][k][0].permute(2, 0, 1) 
                 for o in recent
             ],
             dim=0
@@ -342,8 +344,8 @@ def get_current_obs(obs_list: dict, n_obs_steps, image_key):
         [
             torch.cat(
                 (
-                    obs_list[o].get_low_dim_data()[8:15],
-                    obs_list[o].get_low_dim_data()[:1]
+                    obs_list[o]['low_obs_dim'][0],
+                    obs_list[o]['low_obs_dim'][0][:1]
                 ),
                 dim=0
             )
@@ -364,6 +366,7 @@ def run_policy_loop(env: RealEnv, controller: crx_controller, cfg, policy: BaseI
     policy.to(device)
     print("Policy ready. Press Enter to start a rollout, 'r' to redo, 'q' to quit.")
     # initial obs_list
+    step = 0
     init_obs, desired_action = env.get_obs(time_step=step, to_device=True, from_dataset=False)
     obs_list = deque([init_obs] * (n_obs_steps + 1),maxlen=n_obs_steps+1)
     image_keys = ['in_hand', 'fixed_left']
@@ -382,95 +385,96 @@ def run_policy_loop(env: RealEnv, controller: crx_controller, cfg, policy: BaseI
         action_pred_error = np.array([0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0])
         while step < num_steps:
             t0 = time.time()
-            cur_obs, desired_action = env.get_obs(time_step=step, to_device=True, from_dataset=False)
+            # cur_obs, desired_action = env.get_obs(time_step=step, to_device=True, from_dataset=False)
             obs = get_current_obs(obs_list, n_obs_steps, image_keys)
+            print('get_current_obs finished');embed()
             # action_list = []
             # init_sample = torch.randn(
             #     size=(1, 32, 8),
             #     dtype=torch.float32,
             #     device="cuda"
             # )
-            for i in range(n_action_steps):
-                if replay:
-                    act = desired_action
-                else:
-                    with torch.inference_mode():
-                        policy_st = time.time()
-                        action = policy.predict_action(obs)   # expected [dx,dy,dz,dW,dP,dR,grip_abs]
-                        # def get_act(policy, obs, init_sample):
-                        #     action = policy.select_action(obs, init_sample)
-                        #     action_list.append(action)
-                        #     # print("action_appended")
-                        # thread1 = threading.Thread(target=get_act, args=(left_policy, obs_left, init_sample))
-                        # thread2 = threading.Thread(target=get_act, args=(right_policy, obs_right, init_sample))
-                        # thread1.start()
-                        # thread2.start()
-                        # thread1.join()  
-                        # thread2.join()
-                        policy_et = time.time()
-                        # action = (action_list[0] + action_list[1]) / 2.0
-                        act = action.to("cpu").numpy()
-                    act = np.squeeze(act)
-                print(f"time step {step} action: {act}")
-                print(f"policy runtime:", policy_et - policy_st)
-                # action_pred_error += np.abs(desired_action - act)
+            # for i in range(n_action_steps):
+            if replay:
+                act = desired_action
+            else:
+                with torch.inference_mode():
+                    policy_st = time.time()
+                    action = policy.predict_action(obs)   # expected [dx,dy,dz,dW,dP,dR,grip_abs]
+                    # def get_act(policy, obs, init_sample):
+                    #     action = policy.select_action(obs, init_sample)
+                    #     action_list.append(action)
+                    #     # print("action_appended")
+                    # thread1 = threading.Thread(target=get_act, args=(left_policy, obs_left, init_sample))
+                    # thread2 = threading.Thread(target=get_act, args=(right_policy, obs_right, init_sample))
+                    # thread1.start()
+                    # thread2.start()
+                    # thread1.join()  
+                    # thread2.join()
+                    print('generate action finished');embed()
+                    policy_et = time.time()
+                    # action = (action_list[0] + action_list[1]) / 2.0
+                    act = action['action'][0].cpu().numpy()
+            print(f"time step {step} action: {act}")
+            print(f"policy runtime:", policy_et - policy_st)
+            # action_pred_error += np.abs(desired_action - act)
 
-                # delta6   = np.array(act[:6], dtype=float)  # mm & deg deltas (world-frame)
-                # dgrip = float(act[-1])                  # absolute deg [0..1872]
-                
-                # if target6 is None:
-                #     target6, _ = controller.get_robot_state()
-                # current6 = target6
-                # target6 = compose_delta_next_pose_world(current6, delta6)
+            # delta6   = np.array(act[:6], dtype=float)  # mm & deg deltas (world-frame)
+            # dgrip = float(act[-1])                  # absolute deg [0..1872]
+            
+            # if target6 is None:
+            #     target6, _ = controller.get_robot_state()
+            # current6 = target6
+            # target6 = compose_delta_next_pose_world(current6, delta6)
 
-                # print("target pose:", target6)
+            # print("target pose:", target6)
 
-                # controller.rmi.rmLinearMotion(
-                #     target6, cfg, termType="CNT", termVal=100, spdType="mmSec", spd=900
-                # )
+            # controller.rmi.rmLinearMotion(
+            #     target6, cfg, termType="CNT", termVal=100, spdType="mmSec", spd=900
+            # )
 
-                # set_gripper_absolute_degree(env.gripper, env.gripper.get_position_deg() + dgrip)
+            # set_gripper_absolute_degree(env.gripper, env.gripper.get_position_deg() + dgrip)
 
-                if current_state is None:
-                    current_state, _ = controller.get_robot_state()
+            if current_state is None:
+                current_state, _ = controller.get_robot_state()
 
-                spacemouse_state = spacemouse(act)
+            spacemouse_state = spacemouse(act)
 
-                if spacemouse_state.buttons[-1]:
-                    gripper.send_data(spacemouse_state)
-                    desired_state = current_state
-                else:
-                    desired_state = get_desired_robot_state(spacemouse_state, current_state, SPEED)
+            if spacemouse_state.buttons[-1]:
+                gripper.send_data(spacemouse_state)
+                desired_state = current_state
+            else:
+                desired_state = get_desired_robot_state(spacemouse_state, current_state, SPEED)
 
-                current_state = desired_state
-                print("desired state:", desired_state)
-                controller.rmi.rmLinearMotion(desired_state,cfg,termType='CNT',termVal=100,spdType="mmSec",spd=900)
+            current_state = desired_state
+            print("desired state:", desired_state)
+            controller.rmi.rmLinearMotion(desired_state,cfg,termType='CNT',termVal=100,spdType="mmSec",spd=900)
 
-                cnt = 0
-                while cnt < 1000 and controller.rmi.isLastLastSentMotionNotDone():
-                    controller.rmi.rmRecievePacket()
-                    cnt += 1
+            cnt = 0
+            while cnt < 1000 and controller.rmi.isLastLastSentMotionNotDone():
+                controller.rmi.rmRecievePacket()
+                cnt += 1
 
-                cur_obs, desired_action = env.get_obs(time_step=step, to_device=True, from_dataset=False)
-                obs_list.append(cur_obs)
+            cur_obs, desired_action = env.get_obs(time_step=step, to_device=True, from_dataset=False)
+            obs_list.append(cur_obs)
 
-                rem = dt - (time.time() - t0)
-                if rem > 0:
-                    time.sleep(rem)
-                else:
-                    print("LONG TIME:", abs(rem))
+            rem = dt - (time.time() - t0)
+            if rem > 0:
+                time.sleep(rem)
+            else:
+                print("LONG TIME:", abs(rem))
 
-                if keys.is_pressed("r"):
-                    print(f"Redoing rollout {episode}.")
-                    while keys.is_pressed("r"):
-                        time.sleep(0.05)
-                    step = 0
-                    continue
-                if keys.is_pressed("q"):
-                    print("Stopping deployment.")
-                    return
+            if keys.is_pressed("r"):
+                print(f"Redoing rollout {episode}.")
+                while keys.is_pressed("r"):
+                    time.sleep(0.05)
+                step = 0
+                continue
+            if keys.is_pressed("q"):
+                print("Stopping deployment.")
+                return
 
-                step += 1
+            step += 1
 
         episode += 1
         # print("action pred error: ", action_pred_error/step, np.mean(action_pred_error/step))
@@ -489,13 +493,12 @@ if __name__ == "__main__":
     controller = connect_to_robot(FTdata, INIT_JOINT)
     gripper = New_Gripper(GRIPPER_SERIAL)
     # reset_robot(controller, gripper, init_joint=INIT_JOINT, speed=RESET_SPEED)
-    Cpos,cfg,_,_= controller.rmi.rmGetCartPos()
+    Cpos,env_cfg,_,_= controller.rmi.rmGetCartPos()
 
     keys = KeyWatcher()
     env = RealEnv(controller, gripper)
-    embed()
 
-    print("Loading policy…")
+    print("Loading workspace")
     with initialize(config_path="diffusion_policy/config", version_base=None):
         cfg = compose(config_name="train_diffusion_unet_image_workspace")
         print(OmegaConf.to_yaml(cfg))
@@ -512,12 +515,13 @@ if __name__ == "__main__":
         workspace.load_payload(payload, exclude_keys=['classifier'], strict=False)
     else:
         workspace.load_payload(payload, exclude_keys=['classifier']) 
-       
-    dataset: BaseImageDataset
-    dataset = hydra.utils.instantiate(cfg.task.dataset)
-    assert isinstance(dataset, BaseImageDataset)
-    normalizer = dataset.get_normalizer()
 
+    print('Loading normalizer')
+    normalizer = LinearNormalizer()
+    state = torch.load("/home/msc/Documents/RealWorldLeveFD/ckp/mug_hanging_tree_normalizer_state.pt")
+    normalizer.load_state_dict(state)
+
+    print('Loading policy')
     workspace.model.set_normalizer(normalizer)
     policy = workspace.model
     if cfg.training.use_ema:
@@ -525,15 +529,13 @@ if __name__ == "__main__":
         policy = workspace.ema_model
 
     policy.eval()   
-    embed() 
 
     print("Warming up get_obs forward…")
     for _ in range(10):
         dict_info,_ = env.get_obs(time_step=0, to_device=True)
-    embed()
 
     print("Deploying policy.")
-    run_policy_loop(env, controller, cfg, policy, keys, num_steps=NUM_STEPS, dt=DT, num_episode=1, n_obs_steps=n_obs_steps, n_action_steps=n_action_steps)
+    run_policy_loop(env, controller, env_cfg, policy, keys, num_steps=NUM_STEPS, dt=DT, num_episode=1, n_obs_steps=n_obs_steps, n_action_steps=n_action_steps)
     # run_policy_loop(env, controller, cfg, left_policy, right_policy, keys, num_steps=NUM_STEPS, dt=DT, num_episode=1)
 
     cv2.destroyAllWindows()
